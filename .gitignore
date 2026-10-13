@@ -73,3 +73,14 @@ yarn-error.log
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
+
+# Local distributable APKs and certificate material
+artifacts/
+*.p12
+*.pfx
+*.jks
+*.enc
+*.keystore.base64
+*.jks.base64
+.env
+.env.*

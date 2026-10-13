@@ -1,97 +1,115 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# Tizen Pocket
 
-# Getting Started
+A React Native Android app that installs custom Tizen TV packages directly over Wi-Fi. This is a separate repository from TizenAppInstallerCli; it does not require a computer, Tizen Studio, a relay server, or Expo Go during use.
 
-> **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
+## Features
 
-## Step 1: Start Metro
+- Discover nearby TVs or connect by IPv4 address; show the phone IP for Developer Mode.
+- Built-in Jellyfin, TizenBrew and Moonlight catalog using current GitHub releases, with explicit package variant selection.
+- Automatic update checks after connecting and installing, plus a manual **Check for updates** button. Show the installed TV version, available package version and update status on each app card.
+- Install local `.wgt` / ZIP-based `.tpk` packages or download them from HTTPS links. Native TPK compatibility and privilege requirements still depend on the TV.
+- Samsung account sign-in in the system browser, public author/distributor certificate provisioning, reuse of saved profiles, and PKCS#12 import from the CLI or Tizen Studio.
+- In-place updates, progress, cancellation, installed-app listing, and password-protected signing certificate backups.
+- GitHub Actions builds standalone preview APKs on pushes and pull requests and signed release APKs on version tags.
 
-First, you will need to run **Metro**, the JavaScript build tool for React Native.
+## Start using the app
 
-To start the Metro dev server, run the following command from the root of your React Native project:
+1. Install the preview APK from the workflow's **tizen-pocket-preview** artifact, or build one locally with `npm run apk`. It contains the JavaScript bundle and runs without Metro.
+2. Connect the phone and TV to the same network.
+3. Open **Apps** on the TV, enter **12345**, enable Developer Mode, and set the Developer Mode host IP to the phone IP displayed under **Your TV**. Restart the TV. [Samsung's device setup guide](https://developer.samsung.com/smarttv/develop/getting-started/using-sdk/tv-device.html).
+4. Scan for TVs or enter the TV IP. The app reads installed versions and checks upstream releases automatically.
+5. Under **Settings**, create a Samsung signing profile for a new installation, or import the original certificates for an existing installation.
+6. Pick a catalog app or a custom package, then select **Install / update in place**.
 
-```sh
-# Using npm
-npm start
+An imported package can also be installed with **Samsung signing** turned off, using its existing signatures. Those signatures must already be valid for your TV. Apps needing partner privileges require an appropriate imported signing profile; automatic provisioning currently creates Public profiles.
 
-# OR using Yarn
-yarn start
+## Keeping Jellyfin settings and login
+
+The installer never uninstalls an existing app. It preserves the package/application IDs and package content, and reuses the author key. Samsung requires the original author key for updates: [certificate guidance](https://developer.samsung.com/galaxy-watch-tizen/getting-certificates/overview.html).
+
+For Jellyfin already installed with the CLI, copy the matching TV's `author.p12` and `distributor.p12` to the phone, then import them in **Settings**. On Linux the CLI stores these under:
+
+    ~/.local/share/TizenAppInstallerCli/CertificateCache/<profile>/
+
+The CLI's cached certificate files use an empty password. Import validates the keys, certificate expiry, and the distributor certificate's TV DUID before saving. A profile generated for another TV is rejected.
+
+Use the same Jellyfin package variant. Changing the application ID or author certificate is refused for tracked installations. Distributor renewal retains the saved author certificate. A TV install failure is reported without an uninstall fallback. Settings retention depends on Tizen's in-place upgrade behavior and the TV application itself; live TV testing is still required, including verifying Jellyfin's server and login after an upgrade.
+
+Generated profiles are encrypted using an Android Keystore AES-GCM key and excluded from Android backup. Phone app updates signed with the same Android key retain them. Use **Settings → Back up your signing keys** to export a ZIP containing password-protected author.p12 and distributor.p12 files. This also lets you migrate from the preview app to the release app or another phone. Unzip it and import both certificates with the backup password. Uninstalling the phone app or clearing its data deletes its saved profiles; export a backup first. The Samsung access token is used only during provisioning and is not saved.
+
+## How update detection works
+
+The native module reads `app_version`, `app_tizen_id`, title and installation path from the TV's `vd_applist` response. It reads the actual upstream package manifest instead of treating a GitHub release tag as an app version. Package inspections download the candidate package to temporary phone storage, verify the GitHub SHA-256 digest when provided, compute a content fingerprint and cache metadata for six hours; they never install anything.
+
+TizenBrew and Moonlight normally have comparable numeric package versions. Jellyfin releases currently reuse manifest version **0.1.0**, so version equality alone cannot confirm its client build. When readable, the app pulls the installed author signature through SDB and compares its SHA-512 file references with the upstream package's file hashes:
+
+| Status | Meaning |
+| --- | --- |
+| Update available | The upstream package has a higher comparable version. |
+| Up to date | The content fingerprint matches, or a versioned non-Jellyfin package has the same version. |
+| Different build available | Same version, different signed content. Review the release; this does not prove it is chronologically newer. |
+| Installed version is newer | The TV has a higher version; no upgrade is claimed. |
+| Build version unknown | The TV did not expose enough information, including fixed-version Jellyfin builds with unreadable signatures. |
+| Different variant installed | App IDs differ; select the matching variant before updating. |
+| Not installed | No matching app is present in a valid TV inventory. |
+| Could not check updates | TV, download or GitHub request failed; not an up-to-date verdict. |
+
+Checks use the last successfully installed catalog asset variant when known. An app installed elsewhere may need its variant selected manually. Custom apps have no universal release source; they can be installed/updated from a new local package or URL, and their TV versions appear in the installed-app listing.
+
+## Development and builds
+
+Requirements: Node 24 LTS or newer supported by React Native 0.87.1, Java 21, Android SDK platform **37.0**, build tools **37.0.0**, and NDK **27.1.12297006**. The app targets API 36 and supports Android 7.0 / API 24 and newer.
+
+```bash
+npm ci
+# Set your SDK path in android/local.properties, or set ANDROID_HOME.
+npm run typecheck
+npm run lint
+npm test -- --runInBand
+npm run test:android
+npm run apk
 ```
 
-## Step 2: Build and run your app
+The standalone preview APK and checksum are written to `artifacts/`. Preview uses a development Android signing key and a separate `.preview` application ID. For development with a phone/emulator, run `npm start` and `npm run android`.
 
-With Metro running, open a new terminal window/pane from the root of your React Native project, and use one of the following commands to build and run your Android or iOS app:
+The transport and signing module is Android-only. The generated iOS scaffold is not a working TV installer; no iOS builds are configured.
 
-### Android
+## CI and release signing
 
-```sh
-# Using npm
-npm run android
+Push this repository to GitHub to activate `.github/workflows/android.yml`.
 
-# OR using Yarn
-yarn android
+Every push and pull request runs TypeScript, ESLint, Jest, and native JVM tests, then builds a standalone preview APK with all four Android ABIs. Download the APK and SHA256SUMS from the workflow's artifact. No secrets are needed for previews, including forked pull requests.
+
+For production releases, create and retain an Android signing key:
+
+```bash
+keytool -genkeypair -v -keystore tizen-pocket.jks -alias tizen-pocket -keyalg RSA -keysize 4096 -validity 10000
+base64 -w0 tizen-pocket.jks > tizen-pocket.keystore.base64
 ```
 
-### iOS
+Configure these repository Actions secrets:
 
-For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
+| Secret | Value |
+| --- | --- |
+| ANDROID_KEYSTORE_BASE64 | Base64-encoded keystore file. |
+| ANDROID_KEYSTORE_PASSWORD | Keystore password. |
+| ANDROID_KEY_ALIAS | Key alias, e.g. tizen-pocket. |
+| ANDROID_KEY_PASSWORD | Key password. |
 
-The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
+Pushing a tag such as `v0.1.0` builds a release APK, uploads an artifact and creates a GitHub release with the APK and checksum. The workflow run number supplies a monotonically increasing Android versionCode. Reuse the same keystore for later APK updates. Release builds fail clearly if signing is missing; they do not silently use the preview key.
 
-```sh
-bundle install
-```
+For a local release, set `ANDROID_KEYSTORE_PATH`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`, `ANDROID_VERSION_CODE`, and `ANDROID_VERSION_NAME`, then run `./android/gradlew -p android assembleRelease`.
 
-Then, and every time you update your native dependencies, run:
+## Validation and limits
 
-```sh
-bundle exec pod install
-```
+JVM tests validate both XML signatures using Apache Santuario independently of the signer, detect content tampering, exercise PKCS#12 round trips, validate package IDs, reject unsafe archives, and simulate SDB framing, flow control, upload timestamps and TV inventory parsing. Jest tests cover semantic versions, fixed-version Jellyfin builds, package variants and the connection-to-update-screen flow.
 
-For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
+No physical TV or authenticated Samsung account is available in the development environment. Certificate API acceptance, model-specific SDB behavior and Jellyfin state retention must be checked on real hardware. The current SDB client supports the Developer Mode connection used by the CLI; it reports an explicit setup error if a TV requests SDB AUTH. Broad networks are scanned within the phone's /24 and at most 512 addresses; manual IP entry works across routed networks when reachable.
 
-```sh
-# Using npm
-npm run ios
+## Catalog sources
 
-# OR using Yarn
-yarn ios
-```
+- [Jellyfin Tizen builds](https://github.com/jeppevinkel/jellyfin-tizen-builds)
+- [TizenBrew](https://github.com/reisxd/TizenBrew)
+- [Moonlight for Tizen](https://github.com/brightcraft/moonlight-tizen)
 
-If everything is set up correctly, you should see your new app running in the Android Emulator, iOS Simulator, or your connected device.
-
-This is one way to run your app — you can also build it directly from Android Studio or Xcode.
-
-## Step 3: Modify your app
-
-Now that you have successfully run the app, let's make changes!
-
-Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
-
-When you want to forcefully reload, for example to reset the state of your app, you can perform a full reload:
-
-- **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Dev Menu**, accessed via <kbd>Ctrl</kbd> + <kbd>M</kbd> (Windows/Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (macOS).
-- **iOS**: Press <kbd>R</kbd> in iOS Simulator.
-
-## Congratulations! :tada:
-
-You've successfully run and modified your React Native App. :partying_face:
-
-### Now what?
-
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
-
-# Troubleshooting
-
-If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
-
-# Learn More
-
-To learn more about React Native, take a look at the following resources:
-
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+See [NOTICE.md](NOTICE.md) for dependencies and public CA certificate provenance.
