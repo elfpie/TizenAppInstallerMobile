@@ -77,7 +77,8 @@ class TizenNetworkingTest {
             assertTrue("Standalone React Native bundle must start", start.waitForCompletion(30, TimeUnit.SECONDS))
             assertNull("React Native startup failed", start.getError())
             val testContext = instrumentation.context
-            instrumentation.uiAutomation.executeShellCommand("appops set ${testContext.packageName} ACTIVATE_VPN allow").close()
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(
+                "appops set ${testContext.packageName} ACTIVATE_VPN allow")).use { it.readBytes() }
             testContext.startActivity(Intent(testContext, TestVpnActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             val manager = instrumentation.targetContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
             val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20)
@@ -89,16 +90,24 @@ class TizenNetworkingTest {
                 !caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN) &&
                     (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) || caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET))
             } == true }
-            try {
-                physical.socketFactory.createSocket().use { it.connect(InetSocketAddress("10.0.2.2", 26101), 2000) }
-                fail("Regression setup invalid: VPN must deny the old explicit physical-network binding")
-            } catch (error: java.io.IOException) {
-                assertTrue("Expected EPERM from the old binding, got: $error", error.message.orEmpty().contains("EPERM"))
+            // Network publication can precede netd applying the VPN's UID policy.
+            val bindingDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+            var denied = false
+            while (!denied && System.nanoTime() < bindingDeadline) {
+                try {
+                    physical.socketFactory.createSocket().use { it.connect(InetSocketAddress("10.0.2.2", 26101), 2000) }
+                } catch (error: java.io.IOException) {
+                    assertTrue("Expected EPERM from the old binding, got: $error", error.message.orEmpty().contains("EPERM"))
+                    denied = true
+                }
+                if (!denied) Thread.sleep(100)
             }
+            assertTrue("Regression setup invalid: VPN must deny the old explicit physical-network binding", denied)
         }
         @AfterClass @JvmStatic fun disableVpn() {
             val context = InstrumentationRegistry.getInstrumentation().context
-            context.stopService(Intent(context, TestVpnService::class.java))
+            context.startActivity(Intent(context, TestVpnActivity::class.java).putExtra("stop", true)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
             val application = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as MainApplication
             application.reactHost.destroy("Instrumentation finished", null).waitForCompletion(10, TimeUnit.SECONDS)
         }
