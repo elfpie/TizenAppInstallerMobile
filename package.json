@@ -9,7 +9,7 @@
     "test": "jest",
     "typecheck": "tsc --noEmit",
     "apk": "bash scripts/build-apk.sh",
-    "test:android": "cd android && ./gradlew testDebugUnitTest"
+    "test:android": "cd android && ./gradlew testPreviewUnitTest"
   },
   "dependencies": {
     "react": "19.2.3",

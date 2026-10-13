@@ -121,7 +121,7 @@ See [NOTICE.md](NOTICE.md) for dependencies and public CA certificate provenance
 These checks only read TV metadata and app listings. They never install or uninstall apps. The TV must authorize the computer’s IP for SDB; restore the phone’s host IP afterward.
 
 ```bash
-TIZEN_SDB_TEST_HOST=192.168.15.5 ./android/gradlew -p android testDebugUnitTest --tests '*LiveTvTest.sdbQueries' --rerun
+TIZEN_SDB_TEST_HOST=192.168.15.5 ./android/gradlew -p android testPreviewUnitTest --tests '*LiveTvTest.sdbQueries' --rerun
 # Optional if the TV exposes port 8001:
-TIZEN_HTTP_TEST_HOST=192.168.15.5 ./android/gradlew -p android testDebugUnitTest --tests '*LiveTvTest.httpDiscovery' --rerun
+TIZEN_HTTP_TEST_HOST=192.168.15.5 ./android/gradlew -p android testPreviewUnitTest --tests '*LiveTvTest.httpDiscovery' --rerun
 ```
