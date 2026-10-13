@@ -5,7 +5,6 @@ import java.io.Closeable
 import java.io.File
 import java.io.InputStream
 import java.net.InetSocketAddress
-import java.net.Socket
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.ArrayDeque
@@ -17,8 +16,9 @@ class SdbClient(
     connectTimeout: Int = 5000,
     private val register: (Closeable) -> Unit = {},
     private val checkCancelled: () -> Unit = {},
+    socketFactory: javax.net.SocketFactory = javax.net.SocketFactory.getDefault(),
 ) : Closeable {
-    private val socket = Socket()
+    private val socket = socketFactory.createSocket()
     private var maxPayload = 4096
     private var nextId = 1
     val banner: String
@@ -116,7 +116,11 @@ class SdbClient(
         fun accept(frame: Frame) {
             // A peer can send a final CLSE for the previous service after we have opened a new one.
             if (frame.arg1 != localId) return
-            require(frame.arg0 == remoteId) { "Invalid SDB channel ID." }
+            // SDB sends CLSE(0, localId) after destroying the remote service socket.
+            // Data/ack frames must still belong to the negotiated remote channel.
+            require(frame.arg0 == remoteId || (frame.command == "CLSE" && frame.arg0 == 0)) {
+                "Invalid SDB channel ID: " + frame.command + " remote=" + frame.arg0 + ", expected=" + remoteId
+            }
             when (frame.command) {
                 "WRTE" -> {
                     pending.add(frame.payload)
@@ -191,6 +195,12 @@ class SdbClient(
 
     fun shell(command: String, timeoutMs: Int = 15000, onChunk: (String) -> Unit = {}): String =
         service("shell:$command", timeoutMs, onChunk).toString(Charsets.UTF_8)
+
+    fun deviceUid(): String {
+        val value = shell("0 getduid").trim { it == '\u0000' || it.isWhitespace() }
+        require(value.length in 8..256 && value.none { it.isWhitespace() || it.code < 32 }) { "TV returned an invalid DUID." }
+        return value
+    }
 
     fun capabilities(): Map<String, String> {
         val response = service("capability:")

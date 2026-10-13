@@ -1,6 +1,9 @@
 import {NativeEventEmitter, NativeModules, Platform} from 'react-native';
 
 export type Tv = {
+  model?: string;
+  developerMode?: boolean;
+  developerHost?: string;
   host: string;
   name: string;
   version: string;

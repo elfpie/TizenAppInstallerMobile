@@ -4,7 +4,7 @@ A React Native Android app that installs custom Tizen TV packages directly over 
 
 ## Features
 
-- Discover nearby TVs or connect by IPv4 address; show the phone IP for Developer Mode.
+- Discover TVs through Samsung HTTP metadata or SDB, or connect by IPv4 address. Show the phone’s Wi-Fi/Ethernet IP and route TV connections through that LAN network when a VPN is active.
 - Built-in Jellyfin, TizenBrew and Moonlight catalog using current GitHub releases, with explicit package variant selection.
 - Automatic update checks after connecting and installing, plus a manual **Check for updates** button. Show the installed TV version, available package version and update status on each app card.
 - Install local `.wgt` / ZIP-based `.tpk` packages or download them from HTTPS links. Native TPK compatibility and privilege requirements still depend on the TV.
@@ -104,7 +104,7 @@ For a local release, set `ANDROID_KEYSTORE_PATH`, `ANDROID_KEYSTORE_PASSWORD`, `
 
 JVM tests validate both XML signatures using Apache Santuario independently of the signer, detect content tampering, exercise PKCS#12 round trips, validate package IDs, reject unsafe archives, and simulate SDB framing, flow control, upload timestamps and TV inventory parsing. Jest tests cover semantic versions, fixed-version Jellyfin builds, package variants and the connection-to-update-screen flow.
 
-No physical TV or authenticated Samsung account is available in the development environment. Certificate API acceptance, model-specific SDB behavior and Jellyfin state retention must be checked on real hardware. The current SDB client supports the Developer Mode connection used by the CLI; it reports an explicit setup error if a TV requests SDB AUTH. Broad networks are scanned within the phone's /24 and at most 512 addresses; manual IP entry works across routed networks when reachable.
+Read-only live checks passed on a Samsung QN55QNX1DAGXZD running Tizen 9.0: repeated SDB connections, capabilities, DUID and installed-app/version queries. These confirmed the TV closes services with CLSE remote ID 0; the client now accepts that valid close while still checking IDs on data frames. The TV reported 22 installed apps, including Jellyfin 0.1.0 and TizenBrew 2.0.5. HTTP discovery also works on TVs that expose the Samsung remote API, with SDB fallback when that API is unavailable. Samsung certificate provisioning and Jellyfin settings retention during installation still need authenticated, end-to-end testing. The current SDB client supports the Developer Mode connection used by the CLI; it reports an explicit setup error if a TV requests SDB AUTH. Broad networks are scanned within the phone's /24 and at most 512 addresses; manual IP entry works across routed networks when reachable.
 
 ## Catalog sources
 
@@ -113,3 +113,13 @@ No physical TV or authenticated Samsung account is available in the development 
 - [Moonlight for Tizen](https://github.com/brightcraft/moonlight-tizen)
 
 See [NOTICE.md](NOTICE.md) for dependencies and public CA certificate provenance.
+
+### Optional live diagnostics
+
+These checks only read TV metadata and app listings. They never install or uninstall apps. The TV must authorize the computer’s IP for SDB; restore the phone’s host IP afterward.
+
+```bash
+TIZEN_SDB_TEST_HOST=192.168.15.5 ./android/gradlew -p android testDebugUnitTest --tests '*LiveTvTest.sdbQueries' --rerun
+# Optional if the TV exposes port 8001:
+TIZEN_HTTP_TEST_HOST=192.168.15.5 ./android/gradlew -p android testDebugUnitTest --tests '*LiveTvTest.httpDiscovery' --rerun
+```

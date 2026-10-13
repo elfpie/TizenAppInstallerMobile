@@ -16,7 +16,7 @@ export const catalog: CatalogApp[] = [
     repository: 'jeppevinkel/jellyfin-tizen-builds',
     summary: 'Your media, on the big screen.',
     description:
-      'Update in place with the same package variant and author certificate to retain your server and signed-in account.',
+      'Keep the same variant and signing keys to retain your server and login.',
     color: '#AA89FF',
     glyph: '◇',
     preferredAssets: ['Jellyfin.wgt'],
@@ -26,8 +26,7 @@ export const catalog: CatalogApp[] = [
     name: 'TizenBrew',
     repository: 'reisxd/TizenBrew',
     summary: 'A home for community TV apps.',
-    description:
-      'Pick the launcher build that supports your TV. Some releases only include the older standalone variant.',
+    description: 'Choose the launcher build supported by your TV.',
     color: '#FFBE83',
     glyph: '⌘',
     preferredAssets: [
@@ -42,7 +41,7 @@ export const catalog: CatalogApp[] = [
     repository: 'brightcraft/moonlight-tizen',
     summary: 'Stream your PC games to your TV.',
     description:
-      'Pair with your Sunshine or GameStream host after installation. The ForceGM variant forces game mode.',
+      'Pair with Sunshine after installing. ForceGM enables game mode.',
     color: '#78BDFF',
     glyph: '☾',
     preferredAssets: ['Moonlight.wgt'],

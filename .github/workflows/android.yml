@@ -40,7 +40,7 @@ jobs:
         working-directory: android
         env:
           ANDROID_VERSION_CODE: ${{ github.run_number }}
-          ANDROID_VERSION_NAME: 0.1.0-preview.${{ github.run_number }}
+          ANDROID_VERSION_NAME: 0.1.1-preview.${{ github.run_number }}
         run: ./gradlew testDebugUnitTest assemblePreview --console=plain --max-workers=4
       - name: Package APK and checksum
         run: |

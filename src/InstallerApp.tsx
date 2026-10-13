@@ -104,6 +104,30 @@ function Field({
     </View>
   );
 }
+function Details({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={title}
+        accessibilityState={{expanded}}
+        onPress={() => setExpanded(!expanded)}
+        style={s.disclosure}
+      >
+        <Text style={s.cardTitle}>{title}</Text>
+        <Text style={s.chevron}>{expanded ? '−' : '+'}</Text>
+      </Pressable>
+      {expanded && children}
+    </>
+  );
+}
 function Pocket() {
   const [tab, setTab] = useState<Tab>('apps');
   const [tv, setTv] = useState<Tv | null>(null);
@@ -286,7 +310,6 @@ function Pocket() {
         </View>
         <View style={s.grow}>
           <Text style={s.brand}>Tizen Pocket</Text>
-          <Text style={s.eyebrow}>A LITTLE MORE FROM YOUR TV</Text>
         </View>
         <Pressable
           accessibilityRole="button"
@@ -362,12 +385,8 @@ function Pocket() {
         )}
         {tab === 'apps' && (
           <>
-            <Text style={s.eyebrow}>YOUR TV, YOUR APPS</Text>
-            <Text style={s.title}>Make room for{'\n'}something better.</Text>
-            <Text style={s.intro}>
-              Bring your favorite apps to your Samsung TV, right from your
-              phone.
-            </Text>
+            <Text style={s.title}>Your apps.</Text>
+            <Text style={s.intro}>Install and update on your Samsung TV.</Text>
             <Pressable
               accessibilityRole="button"
               onPress={() => setTab('tv')}
@@ -402,10 +421,8 @@ function Pocket() {
                 </View>
                 <Text style={s.small}>
                   {checkedAt
-                    ? 'Checked at ' +
-                      checkedAt +
-                      '. Versions are read from your TV.'
-                    : 'Read installed versions and compare the latest upstream packages.'}
+                    ? 'Checked at ' + checkedAt
+                    : 'Compare installed apps with the latest releases.'}
                 </Text>
                 <Button
                   label="Check for updates"
@@ -427,10 +444,8 @@ function Pocket() {
                 <View style={s.divider} />
                 <Text style={s.cardTitle}>Keep your TV settings</Text>
                 <Text style={s.body}>
-                  Updates install in place. For Jellyfin, keep the same app
-                  variant and original author certificate to retain your server
-                  and account. If the TV refuses the update, the installer stops
-                  without uninstalling.
+                  Use the same app variant and author certificate to keep your
+                  settings. Updates never uninstall the app.
                 </Text>
                 <View style={s.row}>
                   <View style={s.grow}>
@@ -723,50 +738,14 @@ function Pocket() {
         )}
         {tab === 'tv' && (
           <>
-            <Text style={s.eyebrow}>ONE PHONE. ONE BIG SCREEN.</Text>
-            <Text style={s.title}>Meet your TV.</Text>
-            <Text style={s.intro}>
-              Your phone and TV need to be on the same local network.
-            </Text>
+            <Text style={s.title}>Your TV.</Text>
             <View style={s.panel}>
-              <Text style={s.sectionTitle}>A quick setup on your TV</Text>
-              <Text style={s.body}>
-                1. Open Apps on the TV and enter 12345 on the remote.{'\n\n'}2.
-                Enable Developer Mode and set its host IP to this phone’s
-                address below.{'\n\n'}3. Restart the TV, then connect here.
-              </Text>
               <View style={s.ipBox}>
-                <Text style={s.eyebrow}>THIS PHONE’S LOCAL IP</Text>
+                <Text style={s.label}>Phone Wi-Fi IP</Text>
                 <Text selectable style={s.ip}>
-                  {ips.join(' / ') || 'No local IP found'}
+                  {ips[0] || 'Connect to Wi-Fi'}
                 </Text>
               </View>
-              <Text style={s.small}>
-                Use the Wi-Fi address on the TV’s network. Disable a VPN if it
-                blocks local connections.
-              </Text>
-              <Button
-                label="Refresh phone IP"
-                secondary
-                disabled={busy || !supported}
-                onPress={() =>
-                  run(async () =>
-                    setIps((await bridge.networkInfo()).map(item => item.ip)),
-                  )
-                }
-              />
-              <Button
-                label="Samsung setup guide ↗"
-                secondary
-                onPress={() =>
-                  openUrl(
-                    'https://developer.samsung.com/smarttv/develop/getting-started/using-sdk/tv-device.html',
-                  )
-                }
-              />
-            </View>
-            <View style={s.panel}>
-              <Text style={s.sectionTitle}>Find a TV nearby</Text>
               <Button
                 label="Scan for TVs"
                 disabled={busy || !supported}
@@ -778,19 +757,28 @@ function Pocket() {
                 }
               />
               {devices.map(device => (
-                <Button
-                  key={device.host}
-                  label={device.name + ' · ' + device.host}
-                  secondary
-                  disabled={busy}
-                  onPress={() => connect(device.host)}
-                />
+                <View key={device.host} style={s.field}>
+                  <Button
+                    label={device.name + ' · ' + device.host}
+                    secondary
+                    disabled={busy}
+                    onPress={() => connect(device.host)}
+                  />
+                  {device.developerMode === false && (
+                    <Text style={s.small}>Developer Mode is off.</Text>
+                  )}
+                  {device.developerHost &&
+                    !ips.includes(device.developerHost) && (
+                      <Text style={s.small}>
+                        TV host IP: {device.developerHost}. Set it to{' '}
+                        {ips[0] || 'this phone’s Wi-Fi IP'}.
+                      </Text>
+                    )}
+                </View>
               ))}
               {scanned && !devices.length && (
                 <Text style={s.small}>
-                  No TVs responded. Check Developer Mode and host IP, restart
-                  the TV, or enter its address below. Broad networks are scanned
-                  within the phone’s /24.
+                  No TVs found. Enter the TV’s IP below.
                 </Text>
               )}
               <View style={s.divider} />
@@ -807,12 +795,38 @@ function Pocket() {
                 onPress={() => connect(host)}
               />
             </View>
+            <View style={s.panel}>
+              <Details title="TV setup">
+                <Text style={s.body}>
+                  1. TV Apps → enter 12345.{'\n'}2. Developer Mode on → host IP{' '}
+                  {ips[0] || 'shown above'}.{'\n'}3. Restart the TV.
+                </Text>
+                <Button
+                  label="Refresh phone IP"
+                  secondary
+                  disabled={busy || !supported}
+                  onPress={() =>
+                    run(async () =>
+                      setIps((await bridge.networkInfo()).map(item => item.ip)),
+                    )
+                  }
+                />
+                <Button
+                  label="Samsung setup guide ↗"
+                  secondary
+                  onPress={() =>
+                    openUrl(
+                      'https://developer.samsung.com/smarttv/develop/getting-started/using-sdk/tv-device.html',
+                    )
+                  }
+                />
+              </Details>
+            </View>
             {tv && (
               <View style={s.panel}>
-                <Text style={s.sectionTitle}>{tv.name}</Text>
-                <Text selectable style={s.small}>
+                <Text style={s.cardTitle}>{tv.name}</Text>
+                <Text style={s.small}>
                   {tv.host} · Tizen {tv.version}
-                  {'\n'}DUID: {tv.duid}
                 </Text>
                 <Button
                   label="Show installed apps"
@@ -829,6 +843,12 @@ function Pocket() {
                     {appList}
                   </Text>
                 )}
+                <Details title="Device details">
+                  <Text selectable style={s.small}>
+                    {tv.model}
+                    {'\n'}DUID: {tv.duid}
+                  </Text>
+                </Details>
                 <Button
                   label="Disconnect"
                   secondary
@@ -844,11 +864,9 @@ function Pocket() {
         )}
         {tab === 'settings' && (
           <>
-            <Text style={s.eyebrow}>READY FOR THE NEXT UPDATE</Text>
-            <Text style={s.title}>Keep your keys.</Text>
+            <Text style={s.title}>Settings.</Text>
             <Text style={s.intro}>
-              One certificate profile per TV. Reused for every install and
-              update.
+              Keep the same signing keys for future updates.
             </Text>
             <View style={s.panel}>
               <View style={s.sectionRow}>
@@ -858,12 +876,8 @@ function Pocket() {
                 </Text>
               </View>
               <Text style={s.body}>
-                For a new installation, sign in to Samsung in your browser.
-                Renewing a saved profile keeps its author key.
-              </Text>
-              <Text style={s.small}>
-                Public certificates are generated automatically. Apps needing
-                partner privileges require an imported profile.
+                Sign in for new installs. Import original keys for existing
+                apps.
               </Text>
               <Button
                 label={
@@ -890,142 +904,139 @@ function Pocket() {
               )}
             </View>
             <View style={s.panel}>
-              <Text style={s.sectionTitle}>
-                Already installed with the CLI?
-              </Text>
-              <Text style={s.body}>
-                Import the original author.p12 and distributor.p12 used for this
-                TV. A new author key cannot update an app signed by the old one.
-              </Text>
-              <Text selectable style={s.small}>
-                Linux CLI cache:
-                ~/.local/share/TizenAppInstallerCli/CertificateCache/{'\n'}Copy
-                the matching TV’s two files to your phone. Cached CLI files use
-                an empty password.
-              </Text>
-              <Button
-                label={author ? 'Author: ' + author.name : 'Choose author.p12'}
-                secondary
-                disabled={busy}
-                onPress={() => pickCertificate('author')}
-              />
-              <Field
-                label="Author certificate password"
-                value={authorPassword}
-                onChange={setAuthorPassword}
-                password
-                disabled={busy}
-                placeholder="Empty for CLI cached certificates"
-              />
-              <Button
-                label={
-                  distributor
-                    ? 'Distributor: ' + distributor.name
-                    : 'Choose distributor.p12'
-                }
-                secondary
-                disabled={busy}
-                onPress={() => pickCertificate('distributor')}
-              />
-              <Field
-                label="Distributor certificate password"
-                value={distributorPassword}
-                onChange={setDistributorPassword}
-                password
-                disabled={busy}
-                placeholder="Empty for CLI cached certificates"
-              />
-              <Button
-                label="Import original certificates"
-                disabled={busy || !tv || !author || !distributor}
-                onPress={() =>
-                  run(async () => {
-                    if (!tv || !author || !distributor) return;
-                    try {
-                      await bridge.importCertificates(
-                        tv.host,
-                        author.uri,
-                        authorPassword,
-                        distributor.uri,
-                        distributorPassword,
-                      );
-                      setTv(await bridge.connect(tv.host));
-                      setAuthor(null);
-                      setDistributor(null);
-                      setNotice('Original signing profile imported.');
-                    } finally {
-                      setAuthorPassword('');
-                      setDistributorPassword('');
-                    }
-                  })
-                }
-              />
-              <Text style={s.small}>
-                Keys are encrypted with Android Keystore and excluded from
-                Android backups. Keep your original files somewhere safe.
-              </Text>
-            </View>
-            <View style={s.panel}>
-              <Text style={s.sectionTitle}>Back up your signing keys</Text>
-              <Text style={s.body}>
-                Save the original certificates before changing phones or moving
-                from the preview to the release app. Unzip the backup and import
-                both .p12 files with the same password.
-              </Text>
-              <Field
-                label="Backup password"
-                value={backupPassword}
-                onChange={setBackupPassword}
-                password
-                disabled={busy}
-                placeholder="At least 12 characters"
-              />
-              <Button
-                label="Export certificate backup"
-                secondary
-                disabled={
-                  busy || !tv?.hasCertificates || backupPassword.length < 12
-                }
-                onPress={() =>
-                  run(async () => {
-                    if (!tv?.duid) return;
-                    try {
-                      const saved = await bridge.exportCertificates(
-                        tv.duid,
-                        backupPassword,
-                      );
-                      setNotice(
-                        saved
-                          ? 'Password-protected certificates exported. Keep the file and password somewhere safe.'
-                          : 'Export cancelled.',
-                      );
-                    } finally {
-                      setBackupPassword('');
-                    }
-                  })
-                }
-              />
-            </View>
-            <View style={s.panel}>
-              <Text style={s.sectionTitle}>Activity</Text>
-              <Text selectable style={s.mono}>
-                {log.length
-                  ? log.join('\n\n')
-                  : 'Installation activity will appear here.'}
-              </Text>
-              {!!log.length && (
+              <Details title="Import existing certificates">
+                <Text style={s.body}>
+                  Choose the author.p12 and distributor.p12 used to install this
+                  TV app.
+                </Text>
+                <Details title="Find CLI certificates">
+                  <Text selectable style={s.small}>
+                    ~/.local/share/TizenAppInstallerCli/CertificateCache/{'\n'}
+                    Copy the matching TV’s .p12 files to your phone. Leave
+                    passwords empty for CLI cached files.
+                  </Text>
+                </Details>
                 <Button
-                  label="Clear activity"
+                  label={
+                    author ? 'Author: ' + author.name : 'Choose author.p12'
+                  }
                   secondary
                   disabled={busy}
-                  onPress={() => setLog([])}
+                  onPress={() => pickCertificate('author')}
                 />
-              )}
+                <Field
+                  label="Author certificate password"
+                  value={authorPassword}
+                  onChange={setAuthorPassword}
+                  password
+                  disabled={busy}
+                  placeholder="Empty for CLI cached certificates"
+                />
+                <Button
+                  label={
+                    distributor
+                      ? 'Distributor: ' + distributor.name
+                      : 'Choose distributor.p12'
+                  }
+                  secondary
+                  disabled={busy}
+                  onPress={() => pickCertificate('distributor')}
+                />
+                <Field
+                  label="Distributor certificate password"
+                  value={distributorPassword}
+                  onChange={setDistributorPassword}
+                  password
+                  disabled={busy}
+                  placeholder="Empty for CLI cached certificates"
+                />
+                <Button
+                  label="Import original certificates"
+                  disabled={busy || !tv || !author || !distributor}
+                  onPress={() =>
+                    run(async () => {
+                      if (!tv || !author || !distributor) return;
+                      try {
+                        await bridge.importCertificates(
+                          tv.host,
+                          author.uri,
+                          authorPassword,
+                          distributor.uri,
+                          distributorPassword,
+                        );
+                        setTv(await bridge.connect(tv.host));
+                        setAuthor(null);
+                        setDistributor(null);
+                        setNotice('Original signing profile imported.');
+                      } finally {
+                        setAuthorPassword('');
+                        setDistributorPassword('');
+                      }
+                    })
+                  }
+                />
+                <Text style={s.small}>Keys are encrypted on this phone.</Text>
+              </Details>
             </View>
-            <Text style={s.footer}>
-              Tizen Pocket · React Native{'\n'}Installs directly over your local
-              network.
-            </Text>
+            <View style={s.panel}>
+              <Details title="Back up certificates">
+                <Text style={s.body}>
+                  Save your keys before changing phones. Restore by importing
+                  both .p12 files with this password.
+                </Text>
+                <Field
+                  label="Backup password"
+                  value={backupPassword}
+                  onChange={setBackupPassword}
+                  password
+                  disabled={busy}
+                  placeholder="At least 12 characters"
+                />
+                <Button
+                  label="Export certificate backup"
+                  secondary
+                  disabled={
+                    busy || !tv?.hasCertificates || backupPassword.length < 12
+                  }
+                  onPress={() =>
+                    run(async () => {
+                      if (!tv?.duid) return;
+                      try {
+                        const saved = await bridge.exportCertificates(
+                          tv.duid,
+                          backupPassword,
+                        );
+                        setNotice(
+                          saved
+                            ? 'Password-protected certificates exported. Keep the file and password somewhere safe.'
+                            : 'Export cancelled.',
+                        );
+                      } finally {
+                        setBackupPassword('');
+                      }
+                    })
+                  }
+                />
+              </Details>
+            </View>
+            <View style={s.panel}>
+              <Details title="Activity">
+                <Text selectable style={s.mono}>
+                  {log.length
+                    ? log.join('\n\n')
+                    : 'Installation activity will appear here.'}
+                </Text>
+                {!!log.length && (
+                  <Button
+                    label="Clear activity"
+                    secondary
+                    disabled={busy}
+                    onPress={() => setLog([])}
+                  />
+                )}
+              </Details>
+            </View>
+            <Text style={s.footer}>Tizen Pocket</Text>
           </>
         )}
       </ScrollView>
@@ -1062,6 +1073,13 @@ export default function App() {
   );
 }
 const s = StyleSheet.create({
+  disclosure: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 44,
+    gap: 12,
+  },
   safe: {flex: 1, backgroundColor: c.bg},
   grow: {flex: 1},
   header: {
@@ -1108,8 +1126,8 @@ const s = StyleSheet.create({
   statusText: {color: c.text, fontSize: 10, fontWeight: '600'},
   content: {padding: 22, paddingBottom: 36, gap: 18},
   title: {
-    fontSize: 37,
-    lineHeight: 43,
+    fontSize: 32,
+    lineHeight: 38,
     color: c.text,
     fontWeight: '700',
     letterSpacing: -1.5,

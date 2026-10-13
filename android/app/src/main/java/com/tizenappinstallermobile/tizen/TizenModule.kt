@@ -3,6 +3,9 @@ package com.tizenappinstallermobile.tizen
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.os.PowerManager
 import android.provider.OpenableColumns
 import com.facebook.react.ReactPackage
@@ -109,14 +112,47 @@ class TizenModule(private val context: ReactApplicationContext) : ReactContextBa
         require(Regex("(?:[0-9]{1,3}\\.){3}[0-9]{1,3}").matches(host) && host.split('.').all { it.toInt() in 0..255 }) {
             "Enter the TV's IPv4 address, for example 192.168.1.50."
         }
-        return SdbClient(host, connectTimeout = timeout, register = job::register, checkCancelled = job::check)
+        val network = localAddresses().firstOrNull { it.contains(host) }?.network
+        return SdbClient(host, connectTimeout = timeout, register = job::register, checkCancelled = job::check,
+            socketFactory = network?.socketFactory ?: javax.net.SocketFactory.getDefault())
     }
 
-    private fun localAddresses() = NetworkInterface.getNetworkInterfaces().asSequence()
-        .filter { it.isUp && !it.isLoopback && !it.isVirtual }
-        .flatMap { it.interfaceAddresses.asSequence() }
-        .filter { it.address is Inet4Address && !it.address.isLoopbackAddress }
-        .sortedBy { if (it.address.isSiteLocalAddress) 0 else 1 }.toList()
+    private data class LocalAddress(val network: Network?, val address: java.net.InetAddress, val networkPrefixLength: Short) {
+        fun contains(host: String): Boolean {
+            val candidate = host.split('.').mapNotNull { it.toIntOrNull() }
+            if (candidate.size != 4 || candidate.any { it !in 0..255 }) return false
+            val local = address.address.fold(0L) { value, byte -> (value shl 8) or (byte.toInt() and 255).toLong() }
+            val remote = candidate.fold(0L) { value, byte -> (value shl 8) or byte.toLong() }
+            val mask = (0xffffffffL shl (32 - networkPrefixLength.toInt())) and 0xffffffffL
+            return (local and mask) == (remote and mask)
+        }
+    }
+    private fun localAddresses(): List<LocalAddress> {
+        val manager = context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val addresses = manager.allNetworks.flatMap { network ->
+            val capabilities = manager.getNetworkCapabilities(network)
+            if (capabilities == null || capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN) ||
+                !(capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) || capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)))
+                emptyList()
+            else manager.getLinkProperties(network)?.linkAddresses.orEmpty().filter {
+                it.address is Inet4Address && it.address.isSiteLocalAddress && it.prefixLength in 1..30
+            }.map { LocalAddress(network, it.address, it.prefixLength.toShort()) }
+        }
+        if (addresses.isNotEmpty()) return addresses.distinctBy { it.address.hostAddress }
+        return NetworkInterface.getNetworkInterfaces().asSequence()
+            .filter { it.isUp && !it.isLoopback && !it.isVirtual &&
+                !Regex("^(tun|tap|ppp|wg|vpn|ipsec|tailscale)", RegexOption.IGNORE_CASE).containsMatchIn(it.name) }
+            .flatMap { it.interfaceAddresses.asSequence() }
+            .filter { it.address is Inet4Address && it.address.isSiteLocalAddress && it.networkPrefixLength in 1..30 }
+            .map { LocalAddress(null, it.address, it.networkPrefixLength) }.toList()
+    }
+    private fun discoveryHttp(host: String): OkHttpClient {
+        val builder = http.newBuilder().connectTimeout(650, java.util.concurrent.TimeUnit.MILLISECONDS)
+            .readTimeout(1200, java.util.concurrent.TimeUnit.MILLISECONDS).callTimeout(2000, java.util.concurrent.TimeUnit.MILLISECONDS)
+            .followRedirects(false)
+        localAddresses().firstOrNull { it.contains(host) }?.network?.let { builder.socketFactory(it.socketFactory) }
+        return builder.build()
+    }
 
     @ReactMethod fun networkInfo(promise: Promise) {
         try {
@@ -152,9 +188,10 @@ class TizenModule(private val context: ReactApplicationContext) : ReactContextBa
             val tasks = candidates.map { host -> pool.submit<WritableMap?> {
                 try {
                     job.check()
-                    client(host, job, 650).use { sdb ->
-                        tvMap(host, sdb.banner, sdb.capabilities(), null, false)
-                    }
+                    val tv = runCatching { SamsungTvInfo.probe(host, discoveryHttp(host), job::register) }.getOrNull()
+                    job.check()
+                    if (tv != null) tvMap(host, "", emptyMap(), null, false, tv)
+                    else client(host, job, 650).use { sdb -> tvMap(host, sdb.banner, sdb.capabilities(), null, false) }
                 } catch (_: Exception) { null }
                 finally {
                     val count = completed.incrementAndGet()
@@ -165,30 +202,33 @@ class TizenModule(private val context: ReactApplicationContext) : ReactContextBa
         } finally { pool.shutdownNow() }
     }
 
-    private fun tvMap(host: String, banner: String, capabilities: Map<String, String>, duid: String?, signed: Boolean): WritableMap =
+    private fun tvMap(host: String, banner: String, capabilities: Map<String, String>, duid: String?, signed: Boolean, tv: SamsungTvInfo? = null): WritableMap =
         Arguments.createMap().apply {
             putString("host", host)
-            putString("name", banner.substringAfter("::", banner).substringBefore(';').ifBlank { "Samsung TV" })
+            putString("name", tv?.name ?: banner.substringAfter("::", banner).substringBefore(';').ifBlank { "Samsung TV" })
             putString("version", capabilities["platform_version"] ?: "Unknown")
             putString("duid", duid)
             putBoolean("hasCertificates", signed)
+            putString("model", tv?.model)
+            tv?.developerMode?.let { putBoolean("developerMode", it) }
+            putString("developerHost", tv?.developerHost)
         }
 
-    private fun duid(sdb: SdbClient): String {
-        val value = sdb.shell("0 getduid").trim().trimEnd('\u0000')
-        require(value.length in 8..256 && value.none { it.isWhitespace() || it.code < 32 }) { "TV returned an invalid DUID." }
-        return value
-    }
+    private fun duid(sdb: SdbClient): String = sdb.deviceUid()
 
     @ReactMethod fun connect(host: String, promise: Promise) = job(promise) { job ->
         status("connect", "Connecting to $host")
+        val tv = runCatching { SamsungTvInfo.probe(host, discoveryHttp(host), job::register) }.getOrNull()
+        if (tv?.developerMode == false) error("Turn on Developer Mode on the TV, then restart it.")
+        if (!tv?.developerHost.isNullOrBlank() && localAddresses().none { it.address.hostAddress == tv!!.developerHost })
+            error("Set the TV's Developer Mode host IP to " + (localAddresses().firstOrNull()?.address?.hostAddress ?: "this phone's Wi-Fi IP") + ", then restart the TV.")
         client(host, job).use { sdb ->
             val capabilities = sdb.capabilities()
             val duid = duid(sdb)
             val profile = store.load(duid)
             val usable = profile != null && runCatching { profile.validate(duid) }.isSuccess
             preferences.edit().putString("lastHost", host).apply()
-            tvMap(host, sdb.banner, capabilities, duid, usable)
+            tvMap(host, sdb.banner, capabilities, duid, usable, tv)
         }
     }
 
