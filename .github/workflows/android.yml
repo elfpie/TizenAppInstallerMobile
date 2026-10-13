@@ -30,6 +30,10 @@ jobs:
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
       - uses: gradle/actions/setup-gradle@v4
+      - name: Reserve disk space for the emulator
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/share/powershell "${ANDROID_HOME:?}/ndk"
+          df -h /
       - name: Install Android SDK
         run: sdkmanager "platforms;android-37.0" "build-tools;37.0.0" "ndk;27.1.12297006"
       - run: npm ci
@@ -70,7 +74,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
       - uses: actions/upload-artifact@v4
-        if: failure()
+        if: always()
         with:
           name: android-test-reports
           path: |

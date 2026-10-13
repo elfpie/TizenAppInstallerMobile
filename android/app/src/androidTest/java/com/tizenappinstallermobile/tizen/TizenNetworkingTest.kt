@@ -29,7 +29,7 @@ class TizenNetworkingTest {
 
     @Before fun setUp() {
         val application = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as MainApplication
-        module = requireNotNull(application.reactHost.currentReactContext?.getNativeModule(TizenModule::class.java))
+        module = requireNotNull(application.reactHost.currentReactContext?.getNativeModule("TizenBridge") as? TizenModule)
         metadata(true)
     }
 
