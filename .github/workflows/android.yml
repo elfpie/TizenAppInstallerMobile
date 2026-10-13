@@ -13,7 +13,7 @@ concurrency:
 jobs:
   preview:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -40,8 +40,23 @@ jobs:
         working-directory: android
         env:
           ANDROID_VERSION_CODE: ${{ github.run_number }}
-          ANDROID_VERSION_NAME: 0.1.1-preview.${{ github.run_number }}
+          ANDROID_VERSION_NAME: 0.1.2-preview.${{ github.run_number }}
         run: ./gradlew testDebugUnitTest assemblePreview --console=plain --max-workers=4
+      - name: Enable emulator acceleration
+        run: sudo chmod a+rw /dev/kvm
+      - name: Start read-only fake TV
+        run: python3 -u scripts/fake-tv.py > "$RUNNER_TEMP/fake-tv.log" 2>&1 &
+      - name: Test the standalone APK on Android with a restrictive VPN
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          ANDROID_VERSION_CODE: ${{ github.run_number }}
+          ANDROID_VERSION_NAME: 0.1.2-preview.${{ github.run_number }}
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          script: cd android && ./gradlew connectedPreviewAndroidTest --console=plain --max-workers=4
       - name: Package APK and checksum
         run: |
           mkdir -p artifacts
@@ -58,7 +73,10 @@ jobs:
         if: failure()
         with:
           name: android-test-reports
-          path: android/app/build/reports/tests/
+          path: |
+            android/app/build/reports/tests/
+            android/app/build/reports/androidTests/
+            android/app/build/outputs/androidTest-results/
   release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: preview

@@ -15,12 +15,14 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
     namespace "com.tizenappinstallermobile"
+    testBuildType "preview"
     defaultConfig {
         applicationId "com.tizenappinstallermobile"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode = Integer.parseInt(System.getenv("ANDROID_VERSION_CODE") ?: "1")
-        versionName = System.getenv("ANDROID_VERSION_NAME") ?: "0.1.1"
+        versionName = System.getenv("ANDROID_VERSION_NAME") ?: "0.1.2"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
     signingConfigs {
         debug {
@@ -68,4 +70,6 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.apache.santuario:xmlsec:3.0.6")
     testImplementation("org.json:json:20250517")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
 }

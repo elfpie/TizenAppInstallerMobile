@@ -4,7 +4,7 @@ A React Native Android app that installs custom Tizen TV packages directly over 
 
 ## Features
 
-- Discover TVs through Samsung HTTP metadata or SDB, or connect by IPv4 address. Show the phone’s Wi-Fi/Ethernet IP and route TV connections through that LAN network when a VPN is active.
+- Discover TVs through Samsung HTTP metadata or SDB, or connect by IPv4 address. Show the phone’s Wi-Fi/Ethernet IP. Connections follow Android's normal routing and the VPN's LAN policy; they never force a VPN bypass.
 - Built-in Jellyfin, TizenBrew and Moonlight catalog using current GitHub releases, with explicit package variant selection.
 - Automatic update checks after connecting and installing, plus a manual **Check for updates** button. Show the installed TV version, available package version and update status on each app card.
 - Install local `.wgt` / ZIP-based `.tpk` packages or download them from HTTPS links. Native TPK compatibility and privilege requirements still depend on the TV.
@@ -78,7 +78,7 @@ The transport and signing module is Android-only. The generated iOS scaffold is 
 
 Push this repository to GitHub to activate `.github/workflows/android.yml`.
 
-Every push and pull request runs TypeScript, ESLint, Jest, and native JVM tests, then builds a standalone preview APK with all four Android ABIs. Download the APK and SHA256SUMS from the workflow's artifact. No secrets are needed for previews, including forked pull requests.
+Every push and pull request runs TypeScript, ESLint, Jest, and native JVM tests, then builds a standalone preview APK with all four Android ABIs. Before uploading that APK, CI installs it on an Android 36 emulator and tests the registered React Native module with a restrictive VPN and a read-only fake TV. Download the APK and SHA256SUMS from the workflow's artifact. No secrets are needed for previews, including forked pull requests.
 
 For production releases, create and retain an Android signing key:
 
@@ -103,6 +103,8 @@ For a local release, set `ANDROID_KEYSTORE_PATH`, `ANDROID_KEYSTORE_PASSWORD`, `
 ## Validation and limits
 
 JVM tests validate both XML signatures using Apache Santuario independently of the signer, detect content tampering, exercise PKCS#12 round trips, validate package IDs, reject unsafe archives, and simulate SDB framing, flow control, upload timestamps and TV inventory parsing. Jest tests cover semantic versions, fixed-version Jellyfin builds, package variants and the connection-to-update-screen flow.
+
+Android instrumentation tests start the standalone React Native bundle and exercise the production module's scan, manual connection, installed-version reads, and saved TV address. The test VPN deliberately forbids explicit physical-network binding: the test first verifies the old approach fails with EPERM, then runs the app's normal socket routing with HTTP discovery enabled and unavailable. The fake TV emits the Samsung zero-ID close frames observed on the real TV. Its VPN and activity exist only in the separate test APK.
 
 Read-only live checks passed on a Samsung QN55QNX1DAGXZD running Tizen 9.0: repeated SDB connections, capabilities, DUID and installed-app/version queries. These confirmed the TV closes services with CLSE remote ID 0; the client now accepts that valid close while still checking IDs on data frames. The TV reported 22 installed apps, including Jellyfin 0.1.0 and TizenBrew 2.0.5. HTTP discovery also works on TVs that expose the Samsung remote API, with SDB fallback when that API is unavailable. Samsung certificate provisioning and Jellyfin settings retention during installation still need authenticated, end-to-end testing. The current SDB client supports the Developer Mode connection used by the CLI; it reports an explicit setup error if a TV requests SDB AUTH. Broad networks are scanned within the phone's /24 and at most 512 addresses; manual IP entry works across routed networks when reachable.
 

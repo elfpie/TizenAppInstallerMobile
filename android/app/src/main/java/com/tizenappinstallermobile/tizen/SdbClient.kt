@@ -16,9 +16,8 @@ class SdbClient(
     connectTimeout: Int = 5000,
     private val register: (Closeable) -> Unit = {},
     private val checkCancelled: () -> Unit = {},
-    socketFactory: javax.net.SocketFactory = javax.net.SocketFactory.getDefault(),
 ) : Closeable {
-    private val socket = socketFactory.createSocket()
+    private val socket = java.net.Socket()
     private var maxPayload = 4096
     private var nextId = 1
     val banner: String

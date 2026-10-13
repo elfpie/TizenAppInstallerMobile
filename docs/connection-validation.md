@@ -13,7 +13,9 @@ Read-only packet capture on the user's Samsung QN55QNX1DAGXZD (192.168.15.5), af
 
 Discovery now tries Samsung's port-8001 metadata endpoint before SDB. This can identify a TV even when Developer Mode is off or authorizes another device. That endpoint was initially reachable on this TV but unavailable after its reboot; the SDB fallback therefore remains necessary.
 
-Android selects physical Wi-Fi/Ethernet network addresses, excludes VPN addresses, and binds LAN requests to the matching network without changing the app's global network. The TV screen prioritizes phone IP, scan and manual connection. Setup, certificate import help, backups and logs use expandable sections.
+Android selects physical Wi-Fi/Ethernet addresses for the displayed phone IP and scan subnet, excluding VPN addresses. All HTTP and SDB sockets use normal Android routing. The TV screen prioritizes phone IP, scan and manual connection. Setup, certificate import help, backups and logs use expandable sections.
+
+Preview 0.1.1 incorrectly used `Network.socketFactory` to force physical-network binding. The user's VPN forbids that bypass, causing `EPERM` before an SDB handshake. Preview 0.1.2 removes physical-network socket factories from both HTTP discovery and SDB connections. CI now installs the actual preview APK on Android 36, starts its React Native bundle, and runs scan/connection/version checks under a test VPN that forbids bypass. The test first requires the old binding to produce EPERM, ensuring the regression is reproduced rather than merely testing an unrestricted network.
 
 Validation: TypeScript, ESLint, 18 Jest tests, 16 native regression tests and a read-only live SDB check. Regression coverage includes zero-ID closes, delayed closes from a prior service, strict IDs for data frames, and HTTP TV identification. Live installation, Samsung sign-in and Android VPN routing require phone/end-to-end verification.
 
