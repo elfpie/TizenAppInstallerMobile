@@ -1,6 +1,17 @@
 package com.tizenappinstallermobile.tizen
 
 object InstallPolicy {
+    fun errorCode(output: String): String? = Regex("install failed\\[(\\d+),\\s*(-?\\d+)\\]", RegexOption.IGNORE_CASE)
+        .find(output)?.let { it.groupValues[1] + ":" + it.groupValues[2] }
+
+    private fun rejection(output: String): String {
+        val code = errorCode(output)?.let { " ($it)" }.orEmpty()
+        val reason = when {
+            output.contains("certificate", true) || output.contains("signature", true) -> "TV rejected the signing certificate"
+            else -> "TV rejected the installation"
+        }
+        return "$reason$code. See Settings → Activity for details."
+    }
     fun isInstalled(list: String, info: PackageInfo): Boolean =
         list.split(Regex("[^A-Za-z0-9_.-]+" )).any { it == info.packageId || it == info.appId }
 
@@ -20,14 +31,14 @@ object InstallPolicy {
     fun verifyResult(output: String) {
         val text = output.lowercase()
         check(Regex("val\\[(-?\\d+)\\]").findAll(text).none { it.groupValues[1].toIntOrNull() != 0 }) {
-            "TV reported a nonzero installation result. Existing app was not uninstalled. TV response: " + output.takeLast(1800)
+            rejection(output)
         }
         check(!Regex("\\b(fail(?:ed|ure)?|error)\\b|install_failed|check certificate error").containsMatchIn(text)) {
-            "TV rejected the installation. Existing app was not uninstalled. TV response: ${output.takeLast(1800)}"
+            rejection(output)
         }
         check(text.contains("install completed") || text.contains("installing was successful") ||
             text.contains("success") || Regex("val\\[0\\]").containsMatchIn(text)) {
-            "TV did not confirm installation success. Existing app was not uninstalled. TV response: ${output.takeLast(1800)}"
+            "TV did not confirm installation success. See Settings → Activity for details."
         }
     }
 }

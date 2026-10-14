@@ -65,6 +65,6 @@ class Diagnostics(context: Context,
     fun close() { closed.set(true); queue.clear(); executor.shutdownNow(); http.dispatcher.cancelAll() }
     companion object {
         private val text = Regex("[A-Za-z0-9_.:-]{1,100}")
-        private val fields = setOf("stage", "reason", "exception_class", "method", "address_family", "operation", "http_status", "duration_ms", "android_sdk", "app_version")
+        private val fields = setOf("stage", "reason", "exception_class", "method", "address_family", "operation", "tv_error_code", "http_status", "duration_ms", "android_sdk", "app_version")
     }
 }

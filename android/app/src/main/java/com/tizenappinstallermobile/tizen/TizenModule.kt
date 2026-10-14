@@ -508,7 +508,14 @@ class TizenModule(private val context: ReactApplicationContext) : ReactContextBa
                         status("install", "TV is installing the package", it)
                     }
                 }
-                InstallPolicy.verifyResult(result)
+                try { InstallPolicy.verifyResult(result) } catch (error: IllegalStateException) {
+                    val details = mutableMapOf<String, Any>("operation" to (catalogId?.takeIf { it in setOf("jellyfin", "tizenbrew", "moonlight") } ?: "custom"),
+                        "reason" to if (result.contains("certificate", true) || result.contains("signature", true)) "signing_error" else "validation")
+                    InstallPolicy.errorCode(result)?.let { details["tv_error_code"] = it }
+                    diagnostics.event("tizen.install.failed", details)
+                    status("install-details", result.takeLast(4000))
+                    throw error
+                }
                 val after = sdb.shell("0 vd_applist")
                 check(InstallPolicy.isInstalled(after, info)) { "TV reported success but the app is missing from its installed list." }
                 val record = JSONObject().put("packageId", info.packageId).put("appId", info.appId)
@@ -518,6 +525,7 @@ class TizenModule(private val context: ReactApplicationContext) : ReactContextBa
                 if (catalogId != null) editor.putString("install:$duid:$catalogId", record.toString())
                 check(editor.commit()) { "App installed, but the phone could not save the update record." }
                 status("complete", if (update) "Update complete" else "Installation complete", 100.0)
+                diagnostics.event("tizen.install.completed", mapOf("operation" to (catalogId?.takeIf { it in setOf("jellyfin", "tizenbrew", "moonlight") } ?: "custom")))
                 Arguments.createMap().apply { putBoolean("updated", update); putString("name", info.name); putString("output", result) }
             }
         } finally { signed.delete() }

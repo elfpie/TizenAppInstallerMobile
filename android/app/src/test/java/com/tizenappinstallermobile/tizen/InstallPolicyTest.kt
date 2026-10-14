@@ -18,6 +18,15 @@ class InstallPolicyTest {
         assertThrows(IllegalStateException::class.java) { InstallPolicy.verifyResult("[100]") }
         assertThrows(IllegalStateException::class.java) { InstallPolicy.verifyResult("result[success]:val[1]") }
     }
+    @Test fun lateCertificateFailureIsReportedBrieflyWithItsTvCode() {
+        val response = "install start\n" + "installing[28]\n".repeat(100) +
+            "install failed[118, -12], reason: Check certificate error : Invalid format of certificate in signature."
+        assertEquals("118:-12", InstallPolicy.errorCode(response))
+        val failure = assertThrows(IllegalStateException::class.java) { InstallPolicy.verifyResult(response) }
+        assertTrue(failure.message.orEmpty().contains("certificate"))
+        assertTrue(failure.message.orEmpty().contains("118:-12"))
+        assertTrue(failure.message.orEmpty().length < 200)
+    }
     @Test fun tvListingContainsActualVersions() {
         val output = """
             --------------------

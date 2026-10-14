@@ -16,7 +16,7 @@ TEXT = re.compile(r"[A-Za-z0-9_.:-]{1,100}\Z")
 REASONS = {"timeout", "cancelled", "invalid_state", "invalid_payload", "http_error",
            "network_error", "signing_error", "browser_error", "unexpected_error", "validation"}
 FIELDS = {"stage", "reason", "exception_class", "method", "address_family", "operation",
-          "http_status", "duration_ms", "android_sdk", "app_version"}
+          "tv_error_code", "http_status", "duration_ms", "android_sdk", "app_version"}
 
 
 def validate_event(event):

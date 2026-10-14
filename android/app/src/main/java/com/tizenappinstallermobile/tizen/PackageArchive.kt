@@ -218,7 +218,10 @@ object PackageArchive {
         val signer = Signature.getInstance("SHA512withRSA")
         signer.initSign(identity.key)
         signer.update(signedInfo.toByteArray(Charsets.UTF_8))
-        val chain = identity.chain.joinToString("") { "<X509Certificate>${b64(it.encoded)}</X509Certificate>" }
+        // Samsung's certificate reader expects the same MIME lines emitted by Tizen Studio.
+        val chain = identity.chain.joinToString("\n") {
+            "<X509Certificate>\n" + Base64.getMimeEncoder(76, "\n".toByteArray()).encodeToString(it.encoded) + "\n</X509Certificate>"
+        }
         return ("<Signature xmlns=\"$DS\" Id=\"$id\">$signedInfo<SignatureValue>${b64(signer.sign())}</SignatureValue>" +
             "<KeyInfo><X509Data>$chain</X509Data></KeyInfo>$properties</Signature>").toByteArray(Charsets.UTF_8)
     }
