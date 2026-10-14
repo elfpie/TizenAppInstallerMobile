@@ -20,6 +20,7 @@ class SamsungLoginCallback(requestedPort: Int = 4794,
 ) : Closeable {
     val state = ByteArray(24).also { SecureRandom().nextBytes(it) }.joinToString("") { "%02x".format(it) }
     private val result = CompletableFuture<JSONObject>()
+    private val closed = java.util.concurrent.atomic.AtomicBoolean(false)
     private val servers = mutableListOf<ServerSocket>()
     private val sockets = ConcurrentHashMap.newKeySet<Socket>()
     private val acceptors = Executors.newFixedThreadPool(2)
@@ -35,6 +36,7 @@ class SamsungLoginCallback(requestedPort: Int = 4794,
                 while (!server.isClosed) {
                     val socket = try { server.accept() } catch (_: java.io.IOException) { break }
                     sockets.add(socket)
+                    if (closed.get()) { sockets.remove(socket); socket.close(); break }
                     try { workers.execute { handle(socket) } }
                     catch (_: java.util.concurrent.RejectedExecutionException) { sockets.remove(socket); socket.close() }
                 }
@@ -120,8 +122,15 @@ class SamsungLoginCallback(requestedPort: Int = 4794,
         socket.getOutputStream().write(("HTTP/1.1 $code ${if (code == 200) "OK" else "Bad Request"}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n").toByteArray() + body)
     }
     override fun close() {
+        if (!closed.compareAndSet(false, true)) return
         servers.forEach { runCatching { it.close() } }
         sockets.forEach { runCatching { it.close() } }
         acceptors.shutdownNow(); workers.shutdownNow()
+        // A blocked JVM accept can retain the listening FD until its thread unwinds.
+        // Wait before allowing the next sign-in to bind the same callback port.
+        try {
+            acceptors.awaitTermination(2, TimeUnit.SECONDS)
+            workers.awaitTermination(2, TimeUnit.SECONDS)
+        } catch (_: InterruptedException) { Thread.currentThread().interrupt() }
     }
 }

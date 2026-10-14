@@ -45,6 +45,7 @@ class SamsungLoginCallbackTest {
         }
     }
     @Test fun getCallbackWorksAndCancelledListenerReleasesBothAddresses() {
+      repeat(10) {
         val cancelled = AtomicBoolean(false)
         val server = SamsungLoginCallback(0, { if (cancelled.get()) throw CancellationException() })
         val port = server.port
@@ -57,5 +58,6 @@ class SamsungLoginCallbackTest {
             assertTrue(response.startsWith("HTTP/1.1 200"))
             replacement.await(1000)
         }
+      }
     }
 }
