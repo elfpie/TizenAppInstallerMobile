@@ -45,8 +45,9 @@ jobs:
       - name: Test transport and signing; build standalone APK
         working-directory: android
         env:
-          ANDROID_DIAGNOSTICS_URL: ${{ vars.ANDROID_DIAGNOSTICS_URL }}
-          ANDROID_DIAGNOSTICS_WRITE_KEY: ${{ secrets.ANDROID_DIAGNOSTICS_WRITE_KEY }}
+          # Public APKs never contain a private collector endpoint or write key.
+          ANDROID_DIAGNOSTICS_URL: ''
+          ANDROID_DIAGNOSTICS_WRITE_KEY: ''
           ANDROID_VERSION_CODE: ${{ github.run_number }}
           ANDROID_VERSION_NAME: 0.1.3-preview.${{ github.run_number }}
         run: ./gradlew testPreviewUnitTest assemblePreview --console=plain --max-workers=4
@@ -57,8 +58,8 @@ jobs:
       - name: Test the standalone APK on Android with a restrictive VPN
         uses: reactivecircus/android-emulator-runner@v2
         env:
-          ANDROID_DIAGNOSTICS_URL: ${{ vars.ANDROID_DIAGNOSTICS_URL }}
-          ANDROID_DIAGNOSTICS_WRITE_KEY: ${{ secrets.ANDROID_DIAGNOSTICS_WRITE_KEY }}
+          ANDROID_DIAGNOSTICS_URL: ''
+          ANDROID_DIAGNOSTICS_WRITE_KEY: ''
           ANDROID_VERSION_CODE: ${{ github.run_number }}
           ANDROID_VERSION_NAME: 0.1.3-preview.${{ github.run_number }}
         with:
@@ -125,8 +126,8 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          ANDROID_DIAGNOSTICS_URL: ${{ vars.ANDROID_DIAGNOSTICS_URL }}
-          ANDROID_DIAGNOSTICS_WRITE_KEY: ${{ secrets.ANDROID_DIAGNOSTICS_WRITE_KEY }}
+          ANDROID_DIAGNOSTICS_URL: ''
+          ANDROID_DIAGNOSTICS_WRITE_KEY: ''
           ANDROID_VERSION_CODE: ${{ github.run_number }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |

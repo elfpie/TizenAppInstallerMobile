@@ -108,7 +108,7 @@ Jellyfin prefers the primary `Jellyfin-12.z.wgt` build. After this installer upd
 
 Samsung sign-in and other explicit long operations run with an Android foreground service. This keeps the localhost callback responsive while the external browser is visible, including on phones that freeze cached apps. The callback listens on both IPv4 and IPv6 loopback, validates OAuth state, handles browser preconnects concurrently, and closes on completion or cancellation. The service stops when the operation finishes.
 
-Configured builds can send structured diagnostic events to a private server; disable them under **Settings → Send diagnostics**. See [collector setup and access](diagnostics/README.md).
+Public GitHub APKs have remote diagnostics unconfigured. Private local builds can send structured diagnostic events to a private server; disable them under **Settings → Send diagnostics**. See [collector setup and access](diagnostics/README.md).
 
 JVM tests validate both XML signatures using Apache Santuario independently of the signer, detect content tampering, exercise PKCS#12 round trips, validate package IDs, reject unsafe archives, and simulate SDB framing, flow control, upload timestamps and TV inventory parsing. Callback tests cover IPv4/IPv6 GET and POST, idle browser preconnects, state mismatches, split query/form responses and cancellation cleanup. Jest tests cover semantic versions, fixed-version Jellyfin builds, package variants and the connection-to-update-screen flow. Python tests verify diagnostic key separation, field rejection and retention.
 
@@ -129,7 +129,7 @@ See [NOTICE.md](NOTICE.md) for dependencies and public CA certificate provenance
 These checks only read TV metadata and app listings. They never install or uninstall apps. The TV must authorize the computer’s IP for SDB; restore the phone’s host IP afterward.
 
 ```bash
-TIZEN_SDB_TEST_HOST=192.168.15.5 ./android/gradlew -p android testPreviewUnitTest --tests '*LiveTvTest.sdbQueries' --rerun
+TIZEN_SDB_TEST_HOST=TV_IP ./android/gradlew -p android testPreviewUnitTest --tests '*LiveTvTest.sdbQueries' --rerun
 # Optional if the TV exposes port 8001:
-TIZEN_HTTP_TEST_HOST=192.168.15.5 ./android/gradlew -p android testPreviewUnitTest --tests '*LiveTvTest.httpDiscovery' --rerun
+TIZEN_HTTP_TEST_HOST=TV_IP ./android/gradlew -p android testPreviewUnitTest --tests '*LiveTvTest.httpDiscovery' --rerun
 ```

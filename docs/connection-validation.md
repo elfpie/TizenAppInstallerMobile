@@ -2,7 +2,7 @@
 
 The first Android preview rejected valid Samsung close frames, so discovery silently omitted TVs and manual connection returned “Invalid SDB channel ID.”
 
-Read-only packet capture on the user's Samsung QN55QNX1DAGXZD (192.168.15.5), after temporarily authorizing the development computer, confirmed:
+Read-only packet capture on a Samsung QN55QNX1DAGXZD, after temporarily authorizing the development computer, confirmed:
 
 - Tizen 9.0, SDB daemon 2.2.31.
 - Service OPEN receives OKAY with an allocated remote ID, then WRTE using that ID.
@@ -19,4 +19,4 @@ Preview 0.1.1 incorrectly used `Network.socketFactory` to force physical-network
 
 Validation: TypeScript, ESLint, 18 Jest tests, 16 native regression tests and a read-only live SDB check. Regression coverage includes zero-ID closes, delayed closes from a prior service, strict IDs for data frames, and HTTP TV identification. Live installation, Samsung sign-in and Android VPN routing require phone/end-to-end verification.
 
-Restore the TV's Developer Mode host IP to the phone (192.168.15.3) and restart it before testing the new Android APK.
+Restore the TV's Developer Mode host IP to the phone's local IP and restart it before testing the new Android APK.
