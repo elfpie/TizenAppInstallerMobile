@@ -162,9 +162,17 @@ function Pocket() {
   const [distributorPassword, setDistributorPassword] = useState('');
   const [appList, setAppList] = useState('');
   const [backupPassword, setBackupPassword] = useState('');
+  const [diagnostics, setDiagnostics] = useState({
+    configured: false,
+    enabled: false,
+  });
   const stage = useRef('');
   useEffect(() => {
     if (!supported) return;
+    bridge
+      .diagnosticsInfo()
+      .then(setDiagnostics)
+      .catch(() => {});
     bridge
       .networkInfo()
       .then(info => setIps(info.map(item => item.ip)))
@@ -1036,6 +1044,29 @@ function Pocket() {
                 )}
               </Details>
             </View>
+            {diagnostics.configured && (
+              <View style={s.panel}>
+                <View style={s.sectionRow}>
+                  <Text style={s.cardTitle}>Send diagnostics</Text>
+                  <Switch
+                    accessibilityLabel="Send diagnostics"
+                    value={diagnostics.enabled}
+                    disabled={busy}
+                    onValueChange={enabled =>
+                      run(async () => {
+                        await bridge.setDiagnosticsEnabled(enabled);
+                        setDiagnostics(await bridge.diagnosticsInfo());
+                      })
+                    }
+                    trackColor={{false: '#263346', true: '#55dbc0'}}
+                  />
+                </View>
+                <Text style={s.small}>
+                  Operation stages and error codes go to your private server. No
+                  account data.
+                </Text>
+              </View>
+            )}
             <Text style={s.footer}>Tizen Pocket</Text>
           </>
         )}

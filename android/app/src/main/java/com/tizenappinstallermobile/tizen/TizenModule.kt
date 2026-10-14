@@ -36,6 +36,8 @@ class TizenModule(private val context: ReactApplicationContext) : ReactContextBa
     private val exportPicker = AtomicReference<java.util.concurrent.CompletableFuture<Uri?>?>(null)
     private val store = CertificateStore(context)
     private val preferences = context.getSharedPreferences("tizen-pocket", 0)
+    private val diagnostics = Diagnostics(context)
+    private var lastStage = ""
     private val http = OkHttpClient.Builder().connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
         .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS).callTimeout(180, java.util.concurrent.TimeUnit.SECONDS).build()
 
@@ -75,6 +77,7 @@ class TizenModule(private val context: ReactApplicationContext) : ReactContextBa
     @ReactMethod fun removeListeners(count: Int) = Unit
 
     private fun status(stage: String, message: String, percent: Double? = null) {
+        if (stage != lastStage) { lastStage = stage; diagnostics.event("app.stage", mapOf("stage" to stage)) }
         if (!context.hasActiveReactInstance()) return
         val event = Arguments.createMap().apply {
             putString("stage", stage); putString("message", message)
@@ -83,26 +86,31 @@ class TizenModule(private val context: ReactApplicationContext) : ReactContextBa
         context.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java).emit("TizenProgress", event)
     }
 
-    private fun job(promise: Promise, action: (Job) -> Any?) {
+    private fun job(promise: Promise, keepAlive: Boolean = false, action: (Job) -> Any?) {
         val job = Job()
         if (!active.compareAndSet(null, job)) { promise.reject("BUSY", "Another TV operation is running."); return }
         executor.execute {
             val power = context.getSystemService(android.content.Context.POWER_SERVICE) as PowerManager
             val wake = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "TizenPocket:operation")
-            try {
-                wake.acquire(10 * 60 * 1000L)
-                val result = action(job)
-                job.close()
-                active.compareAndSet(job, null)
-                promise.resolve(result)
-            } catch (error: Exception) {
-                job.close()
-                active.compareAndSet(job, null)
-                promise.reject(if (job.cancelled.get()) "CANCELLED" else "TIZEN_ERROR", error.message ?: "TV operation failed.", error)
-            } finally {
+            var foreground = false
+            fun finish() {
                 job.close()
                 if (wake.isHeld) wake.release()
+                if (foreground) { OperationService.stop(context); foreground = false }
                 active.compareAndSet(job, null)
+            }
+            try {
+                if (keepAlive) { OperationService.start(context); foreground = true }
+                wake.acquire(10 * 60 * 1000L)
+                val result = action(job)
+                finish()
+                promise.resolve(result)
+            } catch (error: Exception) {
+                diagnostics.event("app.operation.failed", mapOf("reason" to if (job.cancelled.get()) "cancelled" else "unexpected_error", "exception_class" to error.javaClass.name.replace('$', '_')))
+                finish()
+                promise.reject(if (job.cancelled.get()) "CANCELLED" else "TIZEN_ERROR", error.message ?: "TV operation failed.", error)
+            } finally {
+                finish()
             }
         }
     }
@@ -258,15 +266,16 @@ class TizenModule(private val context: ReactApplicationContext) : ReactContextBa
         }
     }
 
-    @ReactMethod fun createCertificates(host: String, promise: Promise) = job(promise) { job ->
+    @ReactMethod fun createCertificates(host: String, promise: Promise) = job(promise, keepAlive = true) { job ->
         val duid = client(host, job).use { duid(it) }
         val existing = store.load(duid)
-        val profile = SamsungCertificates(context, job::register, job::check) { status("certificates", it) }.create(duid, existing)
+        val profile = SamsungCertificates(context, job::register, job::check, { status("certificates", it) }, diagnostics::event).create(duid, existing)
         store.save(duid, profile)
+        diagnostics.event("samsung.certificate.saved")
         profile.author.fingerprint
     }
 
-    @ReactMethod fun exportCertificates(duid: String, password: String, promise: Promise) = job(promise) { job ->
+    @ReactMethod fun exportCertificates(duid: String, password: String, promise: Promise) = job(promise, keepAlive = true) { job ->
         require(password.length >= 12) { "Use at least 12 characters for the certificate backup password." }
         val activity = context.currentActivity ?: error("Open the app to export certificates.")
         val profile = store.load(duid) ?: error("No certificate profile is saved for this TV.")
@@ -404,7 +413,7 @@ class TizenModule(private val context: ReactApplicationContext) : ReactContextBa
         }
     }
 
-    @ReactMethod fun preparePackage(source: String, name: String, digest: String?, promise: Promise) = job(promise) { job ->
+    @ReactMethod fun preparePackage(source: String, name: String, digest: String?, promise: Promise) = job(promise, keepAlive = true) { job ->
         val extension = name.substringAfterLast('.').lowercase()
         require(extension == "wgt" || extension == "tpk") { "Choose a .wgt or .tpk package." }
         val file = File(context.cacheDir, "package-${UUID.randomUUID()}.$extension")
@@ -443,7 +452,7 @@ class TizenModule(private val context: ReactApplicationContext) : ReactContextBa
         promise.resolve(null)
     }
 
-    @ReactMethod fun install(host: String, token: String, catalogId: String?, resign: Boolean, promise: Promise) = job(promise) { job ->
+    @ReactMethod fun install(host: String, token: String, catalogId: String?, resign: Boolean, promise: Promise) = job(promise, keepAlive = true) { job ->
         require(Regex("package-[a-f0-9-]+\\.(wgt|tpk)").matches(token)) { "Invalid package token." }
         val input = File(context.cacheDir, token)
         check(input.exists()) { "Package is no longer available. Select or download it again." }
@@ -520,10 +529,18 @@ class TizenModule(private val context: ReactApplicationContext) : ReactContextBa
     }
 
     override fun invalidate() {
+        diagnostics.close()
         active.get()?.let { it.cancelled.set(true); it.close() }
         picker.getAndSet(null)?.reject("CLOSED", "App closed.")
         exportPicker.getAndSet(null)?.complete(null)
         executor.shutdownNow()
         super.invalidate()
+    }
+
+    @ReactMethod fun diagnosticsInfo(promise: Promise) {
+        promise.resolve(Arguments.createMap().apply { putBoolean("configured", diagnostics.configured); putBoolean("enabled", diagnostics.enabled) })
+    }
+    @ReactMethod fun setDiagnosticsEnabled(enabled: Boolean, promise: Promise) {
+        diagnostics.setEnabled(enabled); promise.resolve(null)
     }
 }

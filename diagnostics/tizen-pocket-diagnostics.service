@@ -1,0 +1,27 @@
+[Unit]
+Description=Tizen Pocket private diagnostics collector
+After=network.target
+
+[Service]
+Type=simple
+DynamicUser=yes
+EnvironmentFile=/etc/tizen-pocket-diagnostics/keys.env
+ExecStart=/usr/bin/python3 /opt/tizen-pocket-diagnostics/collector.py
+StateDirectory=tizen-pocket-diagnostics
+StateDirectoryMode=0700
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+MemoryMax=96M
+CPUQuota=20%
+
+[Install]
+WantedBy=multi-user.target

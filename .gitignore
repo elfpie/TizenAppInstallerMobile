@@ -84,3 +84,5 @@ artifacts/
 *.jks.base64
 .env
 .env.*
+__pycache__/
+*.pyc

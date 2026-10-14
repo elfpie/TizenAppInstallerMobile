@@ -22,6 +22,8 @@ export type PreparedPackage = {
 };
 export type Progress = {stage: string; message: string; percent?: number};
 interface TizenBridge {
+  diagnosticsInfo(): Promise<{configured: boolean; enabled: boolean}>;
+  setDiagnosticsEnabled(enabled: boolean): Promise<void>;
   exportCertificates(duid: string, password: string): Promise<boolean>;
   inventory(host: string): Promise<InstalledApp[]>;
   catalogRecords(host: string): Promise<Record<string, CatalogRecord>>;
