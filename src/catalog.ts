@@ -19,7 +19,7 @@ export const catalog: CatalogApp[] = [
       'Keep the same variant and signing keys to retain your server and login.',
     color: '#AA89FF',
     glyph: '◇',
-    preferredAssets: ['Jellyfin.wgt'],
+    preferredAssets: ['Jellyfin-12.z.wgt', 'Jellyfin.wgt'],
   },
   {
     id: 'tizenbrew',

@@ -44,30 +44,36 @@ class CertificateStore(context: Context) {
         }.generateKey()
     }
 
-    private fun file(duid: String) = AtomicFile(File(directory, sha256(duid.toByteArray()) + ".enc"))
+    private fun file(duid: String, appId: String? = null): AtomicFile {
+        appId?.let { PackageArchive.validId(it) }
+        val identity = if (appId == null) duid else "$duid:app:$appId"
+        return AtomicFile(File(directory, sha256(identity.toByteArray()) + ".enc"))
+    }
 
-    fun load(duid: String): CertificateProfile? {
-        val file = file(duid)
+    fun load(duid: String, appId: String? = null): CertificateProfile? {
+        val file = file(duid, appId)
         if (!file.baseFile.exists()) return null
         val bytes = file.readFully()
         require(bytes.size > 12) { "Stored certificate profile is corrupt. Import your original certificates." }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, bytes.copyOfRange(0, 12)))
-        cipher.updateAAD(duid.toByteArray())
+        cipher.updateAAD((if (appId == null) duid else "$duid:app:$appId").toByteArray())
         val json = JSONObject(cipher.doFinal(bytes.copyOfRange(12, bytes.size)).toString(Charsets.UTF_8))
         return CertificateProfile(readP12(Base64.getDecoder().decode(json.getString("author")), charArrayOf(), false),
             readP12(Base64.getDecoder().decode(json.getString("distributor")), charArrayOf(), false))
     }
 
-    fun save(duid: String, profile: CertificateProfile) {
+    fun forApp(duid: String, appId: String): CertificateProfile? = load(duid, appId) ?: load(duid)
+
+    fun save(duid: String, profile: CertificateProfile, appId: String? = null) {
         profile.validate(duid)
         val json = JSONObject().put("author", Base64.getEncoder().encodeToString(exportP12(profile.author)))
             .put("distributor", Base64.getEncoder().encodeToString(exportP12(profile.distributor)))
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, key())
-        cipher.updateAAD(duid.toByteArray())
+        cipher.updateAAD((if (appId == null) duid else "$duid:app:$appId").toByteArray())
         val bytes = cipher.iv + cipher.doFinal(json.toString().toByteArray())
-        val target = file(duid)
+        val target = file(duid, appId)
         val stream = target.startWrite()
         try {
             stream.write(bytes)

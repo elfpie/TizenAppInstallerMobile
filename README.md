@@ -102,6 +102,10 @@ For a local release, set `ANDROID_KEYSTORE_PATH`, `ANDROID_KEYSTORE_PASSWORD`, `
 
 ## Validation and limits
 
+Signing profiles can be scoped to an installed app under **Settings → Signing keys for**. Importing Jellyfin's original author/distributor keys there preserves the default keys used for new apps such as Moonlight. Installation selects the app's saved keys automatically; renewal and backup use the selected profile. Keep a backup for each author key.
+
+Jellyfin prefers the primary `Jellyfin-12.z.wgt` build. After this installer updates an app, it remembers the payload fingerprint and TV installation timestamp. That lets it check builds whose manifest version remains fixed at `0.1.0`; the remembered fingerprint is discarded if the TV's version or installation timestamp changes. Untracked installations whose signatures cannot be read still show an unknown build.
+
 Samsung sign-in and other explicit long operations run with an Android foreground service. This keeps the localhost callback responsive while the external browser is visible, including on phones that freeze cached apps. The callback listens on both IPv4 and IPv6 loopback, validates OAuth state, handles browser preconnects concurrently, and closes on completion or cancellation. The service stops when the operation finishes.
 
 Configured builds can send structured diagnostic events to a private server; disable them under **Settings → Send diagnostics**. See [collector setup and access](diagnostics/README.md).

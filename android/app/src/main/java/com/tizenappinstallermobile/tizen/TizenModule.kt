@@ -250,7 +250,7 @@ class TizenModule(private val context: ReactApplicationContext) : ReactContextBa
             ?: error("Cannot open the selected file. Select it again.")
 
     @ReactMethod fun importCertificates(host: String, authorUri: String, authorPassword: String,
-        distributorUri: String, distributorPassword: String, promise: Promise) = job(promise) { job ->
+        distributorUri: String, distributorPassword: String, appId: String?, promise: Promise) = job(promise) { job ->
         status("certificates", "Validating original signing certificates")
         client(host, job).use { sdb ->
             val duid = duid(sdb)
@@ -260,25 +260,27 @@ class TizenModule(private val context: ReactApplicationContext) : ReactContextBa
                 val profile = CertificateProfile(CertificateStore.readP12(uriBytes(authorUri, 2 * 1024 * 1024), ap),
                     CertificateStore.readP12(uriBytes(distributorUri, 2 * 1024 * 1024), dp))
                 profile.validate(duid)
-                store.save(duid, profile)
+                store.save(duid, profile, appId)
+                if (appId != null && store.load(duid) == null) store.save(duid, profile)
                 profile.author.fingerprint
             } finally { ap.fill('\u0000'); dp.fill('\u0000') }
         }
     }
 
-    @ReactMethod fun createCertificates(host: String, promise: Promise) = job(promise, keepAlive = true) { job ->
+    @ReactMethod fun createCertificates(host: String, appId: String?, promise: Promise) = job(promise, keepAlive = true) { job ->
         val duid = client(host, job).use { duid(it) }
-        val existing = store.load(duid)
+        val existing = store.load(duid, appId)
+        check(appId == null || existing != null) { "Import this app's original keys before renewing its certificate." }
         val profile = SamsungCertificates(context, job::register, job::check, { status("certificates", it) }, diagnostics::event).create(duid, existing)
-        store.save(duid, profile)
+        store.save(duid, profile, appId)
         diagnostics.event("samsung.certificate.saved")
         profile.author.fingerprint
     }
 
-    @ReactMethod fun exportCertificates(duid: String, password: String, promise: Promise) = job(promise, keepAlive = true) { job ->
+    @ReactMethod fun exportCertificates(duid: String, password: String, appId: String?, promise: Promise) = job(promise, keepAlive = true) { job ->
         require(password.length >= 12) { "Use at least 12 characters for the certificate backup password." }
         val activity = context.currentActivity ?: error("Open the app to export certificates.")
-        val profile = store.load(duid) ?: error("No certificate profile is saved for this TV.")
+        val profile = store.load(duid, appId) ?: error("No signing keys are saved for this selection.")
         val future = java.util.concurrent.CompletableFuture<Uri?>()
         check(exportPicker.compareAndSet(null, future)) { "An export dialog is already open." }
         job.register(Closeable { future.complete(null) })
@@ -317,10 +319,12 @@ class TizenModule(private val context: ReactApplicationContext) : ReactContextBa
     @ReactMethod fun inventory(host: String, promise: Promise) = job(promise) { job ->
         status("versions", "Reading installed versions from the TV")
         client(host, job).use { sdb ->
+            val duid = duid(sdb)
             val apps = TvInventory.parse(sdb.shell("0 vd_applist"))
             Arguments.createArray().apply { apps.forEach { app ->
-                var fingerprint: String? = null
-                if (Regex("jellyfin|tizenbrew|moonlight", RegexOption.IGNORE_CASE).containsMatchIn(app.name + app.appId)) {
+                val remembered = preferences.getString("inventory:$duid:${app.appId}", null)?.let { JSONObject(it) }
+                var fingerprint = InstallPolicy.rememberedFingerprint(app, remembered)
+                if (fingerprint == null && Regex("jellyfin|tizenbrew|moonlight", RegexOption.IGNORE_CASE).containsMatchIn(app.name + app.appId)) {
                     val base = app.path?.trimEnd('/')
                     if (base != null && Regex("/[A-Za-z0-9_./-]+").matches(base)) {
                         for (suffix in listOf("/res/wgt/author-signature.xml", "/author-signature.xml", "/res/author-signature.xml")) {
@@ -475,7 +479,7 @@ class TizenModule(private val context: ReactApplicationContext) : ReactContextBa
                 val oldText = if (catalogId != null) preferences.getString("install:$duid:$catalogId", null) else null
                 val previous = oldText?.let { JSONObject(it) }
                 val previousInfo = previous?.let { PackageInfo(it.getString("packageId"), it.getString("appId"), "", "", info.kind) }
-                val profile = if (resign) store.load(duid) else null
+                val profile = if (resign) store.forApp(duid, info.appId) else null
                 val authorFingerprint = profile?.author?.fingerprint ?: PackageArchive.authorFingerprint(input)
                 if (resign) {
                     check(profile != null) { "Set up Samsung certificates, or import the original author/distributor .p12 files, before installing." }
@@ -520,8 +524,11 @@ class TizenModule(private val context: ReactApplicationContext) : ReactContextBa
                 check(InstallPolicy.isInstalled(after, info)) { "TV reported success but the app is missing from its installed list." }
                 val record = JSONObject().put("packageId", info.packageId).put("appId", info.appId)
                     .put("version", info.version).put("author", authorFingerprint ?: "")
+                    .put("fingerprint", PackageArchive.contentFingerprint(input, job::check))
+                    .put("installedAt", TvInventory.parse(after).firstOrNull { it.appId == info.appId }?.installedAt)
                     .put("assetName", preferences.getString("prepared:" + token, ""))
                 val editor = preferences.edit().putString("identity:$duid:${info.packageId}", record.toString())
+                    .putString("inventory:$duid:${info.appId}", record.toString())
                 if (catalogId != null) editor.putString("install:$duid:$catalogId", record.toString())
                 check(editor.commit()) { "App installed, but the phone could not save the update record." }
                 status("complete", if (update) "Update complete" else "Installation complete", 100.0)
@@ -547,6 +554,14 @@ class TizenModule(private val context: ReactApplicationContext) : ReactContextBa
 
     @ReactMethod fun diagnosticsInfo(promise: Promise) {
         promise.resolve(Arguments.createMap().apply { putBoolean("configured", diagnostics.configured); putBoolean("enabled", diagnostics.enabled) })
+    }
+    @ReactMethod fun signingInfo(duid: String, appId: String?, promise: Promise) {
+        executor.execute {
+            try {
+                val profile = store.load(duid, appId)
+                promise.resolve(Arguments.createMap().apply { putBoolean("ready", profile != null && runCatching { profile.validate(duid) }.isSuccess) })
+            } catch (error: Exception) { promise.reject("SIGNING_ERROR", "Unable to read saved signing keys.", error) }
+        }
     }
     @ReactMethod fun setDiagnosticsEnabled(enabled: Boolean, promise: Promise) {
         diagnostics.setEnabled(enabled); promise.resolve(null)

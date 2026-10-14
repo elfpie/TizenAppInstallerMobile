@@ -27,6 +27,17 @@ class InstallPolicyTest {
         assertTrue(failure.message.orEmpty().contains("118:-12"))
         assertTrue(failure.message.orEmpty().length < 200)
     }
+    @Test fun rememberedBuildIsUsedOnlyWhileTheTvInstallationStillMatches() {
+        val app = InstalledTvApp("abc.Jellyfin", "Jellyfin", "0.1.0", "2026-10-13 22:00:00", null)
+        val fingerprint = "a".repeat(64)
+        val record = org.json.JSONObject().put("appId", app.appId).put("version", app.version)
+            .put("installedAt", app.installedAt).put("fingerprint", fingerprint)
+        assertEquals(fingerprint, InstallPolicy.rememberedFingerprint(app, record))
+        assertNull(InstallPolicy.rememberedFingerprint(app.copy(installedAt = "2026-10-13 22:01:00"), record))
+        assertNull(InstallPolicy.rememberedFingerprint(app.copy(version = "0.2.0"), record))
+        assertNull(InstallPolicy.rememberedFingerprint(app.copy(installedAt = null), record))
+        assertNull(InstallPolicy.rememberedFingerprint(app.copy(appId = "other.Jellyfin"), record))
+    }
     @Test fun tvListingContainsActualVersions() {
         val output = """
             --------------------

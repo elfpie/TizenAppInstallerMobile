@@ -101,3 +101,25 @@ test('catalog prefers primary stable build and filters source archives', () => {
     installableAssets(release, catalog[0]).map(asset => asset.name),
   ).toEqual(['Jellyfin.wgt', 'Jellyfin-master.wgt']);
 });
+
+test('Jellyfin offers the primary 12.z build before aliases and alternate app variants', () => {
+  const app = catalog[0];
+  const assets = [
+    'Jellyfin-10.11.z.wgt',
+    'Jellyfin-12.z-secondary.wgt',
+    'Jellyfin.wgt',
+    'Jellyfin-12.z.wgt',
+  ].map(name => ({
+    name,
+    size: 1000,
+    browser_download_url: 'https://github.com/' + name,
+    digest: null,
+  }));
+  const release: Release = {
+    tag_name: 'current',
+    html_url: 'https://github.com/release',
+    published_at: '2026-10-13T00:00:00Z',
+    assets,
+  };
+  expect(installableAssets(release, app)[0].name).toBe('Jellyfin-12.z.wgt');
+});

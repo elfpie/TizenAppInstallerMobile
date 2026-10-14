@@ -16,6 +16,7 @@ jest.mock('../src/bridge', () => ({
   progressEvents: {addListener: () => ({remove: jest.fn()})},
   bridge: {
     diagnosticsInfo: jest.fn(async () => ({configured: false, enabled: false})),
+    signingInfo: jest.fn(async () => ({ready: true})),
     discover: jest.fn(async () => [
       {
         host: '192.168.1.60',

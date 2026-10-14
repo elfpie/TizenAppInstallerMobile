@@ -162,11 +162,28 @@ function Pocket() {
   const [distributorPassword, setDistributorPassword] = useState('');
   const [appList, setAppList] = useState('');
   const [backupPassword, setBackupPassword] = useState('');
+  const [certificateAppId, setCertificateAppId] = useState<string | null>(null);
+  const [signingReady, setSigningReady] = useState(false);
   const [diagnostics, setDiagnostics] = useState({
     configured: false,
     enabled: false,
   });
   const stage = useRef('');
+  useEffect(() => {
+    if (!supported || busy || !tv?.duid) return;
+    let current = true;
+    bridge
+      .signingInfo(tv.duid, certificateAppId)
+      .then(info => {
+        if (current) setSigningReady(info.ready);
+      })
+      .catch(() => {
+        if (current) setSigningReady(false);
+      });
+    return () => {
+      current = false;
+    };
+  }, [tv?.duid, certificateAppId, busy]);
   useEffect(() => {
     if (!supported) return;
     bridge
@@ -877,10 +894,42 @@ function Pocket() {
               Keep the same signing keys for future updates.
             </Text>
             <View style={s.panel}>
+              <Text style={s.cardTitle}>Signing keys for</Text>
+              <View style={s.keyOptions}>
+                {[
+                  {id: null, name: 'New apps'},
+                  ...catalog.flatMap(app => {
+                    const installed = updates[app.id]?.installed;
+                    return installed
+                      ? [{id: installed.appId, name: app.name}]
+                      : [];
+                  }),
+                ].map(option => (
+                  <Pressable
+                    key={option.id || 'default'}
+                    accessibilityRole="radio"
+                    accessibilityLabel={'Signing keys for ' + option.name}
+                    accessibilityState={{
+                      selected: certificateAppId === option.id,
+                    }}
+                    disabled={busy}
+                    onPress={() => {
+                      setCertificateAppId(option.id);
+                      setSigningReady(false);
+                    }}
+                    style={[
+                      s.keyOption,
+                      certificateAppId === option.id && s.keyOptionSelected,
+                    ]}
+                  >
+                    <Text style={s.small}>{option.name}</Text>
+                  </Pressable>
+                ))}
+              </View>
               <View style={s.sectionRow}>
                 <Text style={s.sectionTitle}>Samsung signing</Text>
-                <Text style={tv?.hasCertificates ? s.ready : s.small}>
-                  {tv?.hasCertificates ? 'READY' : 'SETUP NEEDED'}
+                <Text style={signingReady ? s.ready : s.small}>
+                  {signingReady ? 'READY' : 'SETUP NEEDED'}
                 </Text>
               </View>
               <Text style={s.body}>
@@ -889,15 +938,15 @@ function Pocket() {
               </Text>
               <Button
                 label={
-                  tv?.hasCertificates
+                  signingReady
                     ? 'Renew distributor certificate'
                     : 'Sign in to Samsung'
                 }
-                disabled={busy || !tv}
+                disabled={busy || !tv || (!!certificateAppId && !signingReady)}
                 onPress={() =>
                   run(async () => {
                     if (!tv) return;
-                    await bridge.createCertificates(tv.host);
+                    await bridge.createCertificates(tv.host, certificateAppId);
                     setTv(await bridge.connect(tv.host));
                     setNotice('Signing profile saved securely.');
                   })
@@ -971,6 +1020,7 @@ function Pocket() {
                           authorPassword,
                           distributor.uri,
                           distributorPassword,
+                          certificateAppId,
                         );
                         setTv(await bridge.connect(tv.host));
                         setAuthor(null);
@@ -1003,16 +1053,15 @@ function Pocket() {
                 <Button
                   label="Export certificate backup"
                   secondary
-                  disabled={
-                    busy || !tv?.hasCertificates || backupPassword.length < 12
-                  }
+                  disabled={busy || !signingReady || backupPassword.length < 12}
                   onPress={() =>
                     run(async () => {
-                      if (!tv?.duid) return;
+                      if (!tv?.duid || !signingReady) return;
                       try {
                         const saved = await bridge.exportCertificates(
                           tv.duid,
                           backupPassword,
+                          certificateAppId,
                         );
                         setNotice(
                           saved
@@ -1104,6 +1153,20 @@ export default function App() {
   );
 }
 const s = StyleSheet.create({
+  keyOptions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginVertical: 12,
+  },
+  keyOption: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: c.line,
+    borderRadius: 12,
+  },
+  keyOptionSelected: {borderColor: c.accent},
   disclosure: {
     flexDirection: 'row',
     alignItems: 'center',

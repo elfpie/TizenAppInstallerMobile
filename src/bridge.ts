@@ -22,9 +22,14 @@ export type PreparedPackage = {
 };
 export type Progress = {stage: string; message: string; percent?: number};
 interface TizenBridge {
+  signingInfo(duid: string, appId: string | null): Promise<{ready: boolean}>;
   diagnosticsInfo(): Promise<{configured: boolean; enabled: boolean}>;
   setDiagnosticsEnabled(enabled: boolean): Promise<void>;
-  exportCertificates(duid: string, password: string): Promise<boolean>;
+  exportCertificates(
+    duid: string,
+    password: string,
+    appId: string | null,
+  ): Promise<boolean>;
   inventory(host: string): Promise<InstalledApp[]>;
   catalogRecords(host: string): Promise<Record<string, CatalogRecord>>;
   packageMetadata(
@@ -43,13 +48,14 @@ interface TizenBridge {
     digest: string | null,
   ): Promise<PreparedPackage>;
   discardPackage(token: string): Promise<void>;
-  createCertificates(host: string): Promise<string>;
+  createCertificates(host: string, appId: string | null): Promise<string>;
   importCertificates(
     host: string,
     authorUri: string,
     authorPassword: string,
     distributorUri: string,
     distributorPassword: string,
+    appId: string | null,
   ): Promise<string>;
   installedApps(host: string): Promise<string>;
   install(
